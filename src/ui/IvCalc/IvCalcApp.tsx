@@ -9,6 +9,11 @@ import BoxExportDialog from "./Box/BoxExportDialog";
 import BoxImportDialog from "./Box/BoxImportDialog";
 import BoxItemDialog from "./Box/BoxItemDialog";
 import BoxTabChild from "./Box/BoxTabChild";
+import {
+	getInitialHolidayState,
+	holidayStateReducer,
+} from "./Holiday/HolidayState";
+import HolidayView from "./Holiday/HolidayView";
 import IvForm from "./IvForm/IvForm";
 import { getInitialIvState, ivStateReducer } from "./IvState";
 import LowerTabHeader from "./LowerTabHeader";
@@ -28,9 +33,14 @@ const StyledTab = styled(Tab)({
 });
 
 const initialIvState = getInitialIvState();
+const initialHolidayState = getInitialHolidayState();
 
 const ResearchCalcApp = React.memo(() => {
 	const [state, dispatch] = React.useReducer(ivStateReducer, initialIvState);
+	const [holidayState, holidayDispatch] = React.useReducer(
+		holidayStateReducer,
+		initialHolidayState,
+	);
 	const { t } = useTranslation();
 	const width = useDomWidth();
 
@@ -94,6 +104,7 @@ const ResearchCalcApp = React.memo(() => {
 					<StyledTab label={t("rp")} />
 					<StyledTab label={t("strength2")} />
 					<StyledTab label={t("rating")} />
+					<StyledTab label={t("holiday")} />
 				</StyledTabs>
 				{state.tabIndex === 0 && <RpView state={state} width={width} />}
 				{state.tabIndex === 1 && (
@@ -102,15 +113,25 @@ const ResearchCalcApp = React.memo(() => {
 				{state.tabIndex === 2 && (
 					<RatingView pokemonIv={state.pokemonIv} width={width} />
 				)}
+				{state.tabIndex === 3 && (
+					<HolidayView
+						ivState={state}
+						ivDispatch={dispatch}
+						holidayState={holidayState}
+						holidayDispatch={holidayDispatch}
+					/>
+				)}
 				<RateNotFixedPanel state={state} dispatch={dispatch} />
 
-				<LowerTabHeader
-					state={state}
-					dispatch={dispatch}
-					isBoxEmpty={state.box.items.length === 0}
-				/>
+				{state.tabIndex !== 3 && (
+					<LowerTabHeader
+						state={state}
+						dispatch={dispatch}
+						isBoxEmpty={state.box.items.length === 0}
+					/>
+				)}
 			</div>
-			{state.lowerTabIndex === 0 && (
+			{state.tabIndex !== 3 && state.lowerTabIndex === 0 && (
 				<div style={{ margin: "0 0.5rem 10rem 0.5rem" }}>
 					<IvForm
 						parameter={state.parameter}
@@ -120,7 +141,7 @@ const ResearchCalcApp = React.memo(() => {
 					/>
 				</div>
 			)}
-			{state.lowerTabIndex === 1 && (
+			{state.tabIndex !== 3 && state.lowerTabIndex === 1 && (
 				<BoxTabChild
 					items={state.box.items}
 					iv={state.pokemonIv}
@@ -129,7 +150,7 @@ const ResearchCalcApp = React.memo(() => {
 					parameter={state.parameter}
 				/>
 			)}
-			{state.lowerTabIndex === 2 && (
+			{state.tabIndex !== 3 && state.lowerTabIndex === 2 && (
 				<StrengthSettingForm
 					value={state.parameter}
 					items={state.box.items}

@@ -59,7 +59,7 @@ type LevelInfo = {
 };
 
 /** Candy boost policy */
-type BoostPolicy = "all" | "candy" | "level";
+export type BoostPolicy = "all" | "candy" | "level";
 
 /** Configuration for candy dialog */
 type CandyConfig = {
