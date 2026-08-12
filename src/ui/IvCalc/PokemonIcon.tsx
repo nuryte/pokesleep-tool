@@ -65,32 +65,31 @@ function createIconElements(
 	}
 
 	const { rects, shinyPallet, normalPallet } = PokemonIconData[id];
-	const shape: React.ReactElement[] = [];
-	let i = 0;
-	for (const datum of rects) {
+	const pallet = shiny ? shinyPallet : normalPallet;
+	return rects.map((datum) => {
 		const props: { rx?: string; ry?: string } = {};
 		if (datum.r !== undefined) {
 			props.rx = props.ry = (size * datum.r).toFixed(1);
 		}
-		const pallet = shiny ? shinyPallet : normalPallet;
-		shape.push(
+		const key = `${datum.x}-${datum.y}-${datum.w}-${datum.h}-${datum.color}`;
+		return (
 			<rect
-				key={i}
+				key={key}
 				x={(size * datum.x).toFixed(1)}
 				y={(size * datum.y).toFixed(1)}
 				width={(size * datum.w).toFixed(1)}
 				height={(size * datum.h).toFixed(1)}
 				fill={pallet[datum.color]}
 				{...props}
-			/>,
+			/>
 		);
-		i++;
-	}
-	return shape;
+	});
 }
 
 function createEmptyIconElement(size: number): React.ReactElement {
-	return <rect x="0" y="0" width={size} height={size} fill="#bbbbbb" />;
+	return (
+		<rect key="empty" x="0" y="0" width={size} height={size} fill="#bbbbbb" />
+	);
 }
 
 const StyledIconContainer = styled("div")({
