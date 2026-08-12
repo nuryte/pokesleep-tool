@@ -90,6 +90,11 @@ export default defineConfig({
 		globals: true,
 		environment: "jsdom",
 		exclude: [...configDefaults.exclude],
+		// Tests assume JST (event day boundaries, EXP simulation dates), so pin the timezone
+		// regardless of the machine running them.
+		env: {
+			TZ: "Asia/Tokyo",
+		},
 	},
 });
 
