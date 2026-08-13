@@ -151,4 +151,24 @@ describe("getInitialHolidayState", () => {
 		expect(restored.holidaySettings.shards).toBe(1234);
 		expect(restored.pokemonHolidayStatus.get(7)?.candyCount).toBe(42);
 	});
+
+	test("should normalize missing persisted status fields to defaults", () => {
+		localStorage.setItem(
+			"PstHolidayState",
+			JSON.stringify({
+				holidaySettings: JSON.stringify({ shards: 12 }),
+				pokemonHolidayStatus: JSON.stringify([
+					[7, { included: true, candyCount: 2, levelTo: 65 }],
+				]),
+			}),
+		);
+
+		const restored = getInitialHolidayState();
+		const status = restored.pokemonHolidayStatus.get(7);
+		expect(status).toBeDefined();
+		expect(status?.extraCandies).toBe(-1);
+		expect(status?.levelFrom).toBe(-1);
+		expect(status?.candyBoost).toBe("unlimited");
+		expect(Number.isFinite(status?.candyCount ?? NaN)).toBe(true);
+	});
 });

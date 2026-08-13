@@ -3,17 +3,13 @@ import { styled } from "@mui/system";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import {
-	calculatePokemonHolidayCost,
 	calculateTotalDreamShards,
+	sumIncludedHolidayCosts,
 } from "../../../util/HolidayCalculator";
 import NumericSliderInput from "../../common/NumericSliderInput";
 import DreamShardIcon from "../../Resources/DreamShardIcon";
 import type IvState from "../IvState";
-import {
-	defaultPokemonHolidayStatus,
-	type HolidayAction,
-	type HolidayState,
-} from "./HolidayState";
+import type { HolidayAction, HolidayState } from "./HolidayState";
 
 const SettingsPaper = styled(Paper)({
 	padding: "1rem",
@@ -170,28 +166,16 @@ const HolidaySettingsPanel = React.memo(
 			settings.candiesS * 3 + settings.candiesM * 20 + settings.candiesL * 100;
 		const totalShards = calculateTotalDreamShards(settings);
 
-		// Sum the actual cost (achieved candy/shards) of every included Pokémon
-		const { neededShards, neededCandies } = React.useMemo(() => {
-			let shards = 0;
-			let candies = 0;
-			for (const item of ivState.box.items) {
-				const status =
-					holidayState.pokemonHolidayStatus.get(item.id) ??
-					defaultPokemonHolidayStatus();
-				if (!status.included) {
-					continue;
-				}
-				const levelFrom =
-					status.levelFrom < 0 ? item.iv.level : status.levelFrom;
-				const cost = calculatePokemonHolidayCost(item.iv, status, levelFrom);
-				shards += cost.achievedShards;
-				candies += cost.achievedCandy;
-			}
-			return { neededShards: shards, neededCandies: candies };
+		// Sum the configured extra-candy contribution for every included Pokémon.
+		const { neededShards, extraCandiesNeeded } = React.useMemo(() => {
+			return sumIncludedHolidayCosts(
+				ivState.box.items.map((item) => ({ id: item.id, iv: item.iv })),
+				holidayState.pokemonHolidayStatus,
+			);
 		}, [ivState.box.items, holidayState.pokemonHolidayStatus]);
 
 		const availableShards = totalShards - neededShards;
-		const availableCandies = totalCandies - neededCandies;
+		const availableCandies = totalCandies - extraCandiesNeeded;
 
 		return (
 			<SettingsPaper>
@@ -367,7 +351,7 @@ const HolidaySettingsPanel = React.memo(
 									variant="h6"
 									sx={{ color: "#f57c00", fontWeight: 600 }}
 								>
-									{neededCandies.toLocaleString()}
+									{extraCandiesNeeded.toLocaleString()}
 								</Typography>
 							</TotalItem>
 							<TotalOperator>=</TotalOperator>

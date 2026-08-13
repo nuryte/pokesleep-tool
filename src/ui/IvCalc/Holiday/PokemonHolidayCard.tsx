@@ -4,6 +4,7 @@ import {
 	Card,
 	CardContent,
 	Checkbox,
+	InputAdornment,
 	MenuItem,
 	Stack,
 	ToggleButton,
@@ -13,11 +14,13 @@ import { styled } from "@mui/system";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { getCandyName } from "../../../data/pokemons";
+import { calcExp } from "../../../util/Exp";
 import { calculatePokemonHolidayCost } from "../../../util/HolidayCalculator";
 import { clamp } from "../../../util/NumberUtil";
 import type { PokemonBoxItem } from "../../../util/PokemonBox";
 import NumericSliderInput from "../../common/NumericSliderInput";
 import SelectEx from "../../common/SelectEx";
+import SliderEx from "../../common/SliderEx";
 import CandyIcon from "../../Resources/CandyIcon";
 import DreamShardIcon from "../../Resources/DreamShardIcon";
 import { LevelInput } from "../IvForm/LevelControl";
@@ -142,6 +145,62 @@ const StyledBoostRow = styled(Box)({
 	},
 });
 
+const StyledExpSlider = styled(SliderEx)({
+	color: "#79d073",
+	height: 8,
+	"@media (pointer: coarse)": {
+		padding: 0,
+	},
+	padding: 0,
+	"& .MuiSlider-thumb": {
+		width: "14px",
+		height: "13px",
+		"&:focus, &:hover, &.Mui-active, &.Mui-focusVisible": {
+			boxShadow: "inherit",
+		},
+		"&::before": {
+			display: "none",
+		},
+	},
+	"& .MuiSlider-rail": {
+		backgroundColor: "#ccc",
+	},
+});
+
+const StyledExpFormSection = styled(Box)({
+	width: "50%",
+	alignSelf: "flex-start",
+	"& > div.expLeft": {
+		width: "100%",
+		display: "flex",
+		flexDirection: "column",
+		gap: "0.15rem",
+		paddingTop: "0.2rem",
+		"& > div.numeric": {
+			width: "100%",
+		},
+		"& > div.numeric > div.MuiInput-root": {
+			"& > div.MuiInputAdornment-root > p": {
+				color: "#79d073",
+				fontSize: "0.6rem",
+				fontWeight: "bold",
+				transform: "scale(1, 0.9)",
+			},
+			"& > input": {
+				padding: 0,
+				minWidth: "5ch",
+				textAlign: "right",
+				fontSize: "0.8rem",
+				fontWeight: "bold",
+				transform: "scale(1, 0.9)",
+			},
+		},
+	},
+	"& > span.lbl": {
+		fontSize: "0.7rem",
+	},
+});
+
 const StyledMaxRatio = styled(Box)({
 	fontSize: "0.75rem",
 	color: "#666",
@@ -168,6 +227,20 @@ const StyledBoostPolicyRow = styled(Box)({
 		alignItems: "center",
 		gap: "0.2rem",
 		fontSize: "0.9rem",
+	},
+	"& > div.boostLevel": {
+		alignItems: "flex-start",
+		flexDirection: "column",
+		gap: "0.1rem",
+	},
+	"& div.boostLevelTarget": {
+		display: "flex",
+		alignItems: "center",
+	},
+	"& div.boostedCandies": {
+		color: "#666",
+		fontSize: "0.65rem",
+		fontWeight: "bold",
 	},
 });
 
@@ -236,6 +309,28 @@ const PokemonHolidayCard = React.memo(
 			[holidayDispatch, pokemon.id],
 		);
 
+		const maxExpToNextLevel = React.useMemo(
+			() => calcExp(levelFrom, levelFrom + 1, pokemon.iv),
+			[levelFrom, pokemon.iv],
+		);
+		const expToGo = status.expToGo < 0 ? maxExpToNextLevel : status.expToGo;
+
+		const onExpGotChange = React.useCallback(
+			(value: number) => {
+				const expGot = clamp(0, value, maxExpToNextLevel - 1);
+				handleStatusChange({ expToGo: maxExpToNextLevel - expGot });
+			},
+			[handleStatusChange, maxExpToNextLevel],
+		);
+
+		const onExpToGoChange = React.useCallback(
+			(value: number) => {
+				const clamped = clamp(1, value, maxExpToNextLevel);
+				handleStatusChange({ expToGo: clamped });
+			},
+			[handleStatusChange, maxExpToNextLevel],
+		);
+
 		const onCandyCountChange = React.useCallback(
 			(candyCount: number) => {
 				handleStatusChange({ candyCount });
@@ -286,13 +381,23 @@ const PokemonHolidayCard = React.memo(
 			() => calculatePokemonHolidayCost(pokemon.iv, status, levelFrom),
 			[pokemon.iv, status, levelFrom],
 		);
-		const { neededExtra, extraCandies } = cost;
+		const safeNeededExtra = Number.isFinite(cost.neededExtra)
+			? Math.max(0, cost.neededExtra)
+			: 0;
+		const safeExtraCandies = Number.isFinite(cost.extraCandies)
+			? cost.extraCandies
+			: 0;
 
 		const onExtraCandiesChange = React.useCallback(
 			(value: number) => {
-				handleStatusChange({ extraCandies: Math.min(value, neededExtra) });
+				handleStatusChange({
+					extraCandies: Math.min(
+						Number.isFinite(value) ? value : 0,
+						safeNeededExtra,
+					),
+				});
 			},
-			[handleStatusChange, neededExtra],
+			[handleStatusChange, safeNeededExtra],
 		);
 
 		const candyName = t(
@@ -365,6 +470,35 @@ const PokemonHolidayCard = React.memo(
 							</div>
 						</StyledRangeRow>
 
+						<StyledExpFormSection>
+							<div className="expLeft">
+								<StyledExpSlider
+									value={maxExpToNextLevel - expToGo}
+									min={0}
+									max={Math.max(0, maxExpToNextLevel - 1)}
+									onChange2={onExpGotChange}
+								/>
+								<NumericSliderInput
+									sx={{ width: "100%" }}
+									value={expToGo}
+									size="small"
+									startAdornment={
+										<InputAdornment position="start">
+											{t("exp to go1")}
+										</InputAdornment>
+									}
+									endAdornment={
+										<InputAdornment position="end">
+											{t("exp to go2")}
+										</InputAdornment>
+									}
+									min={1}
+									max={maxExpToNextLevel}
+									onChange={onExpToGoChange}
+								/>
+							</div>
+						</StyledExpFormSection>
+
 						<StyledFormSection>
 							<span className="lbl">
 								{t("pokemon candy", { name: candyName })}:
@@ -384,17 +518,18 @@ const PokemonHolidayCard = React.memo(
 								<span className="lbl">{t("extra candies")}:</span>
 								<NumericSliderInput
 									sx={{ width: "3.5rem" }}
-									value={extraCandies}
+									value={safeExtraCandies}
 									min={0}
-									max={Math.max(1, neededExtra)}
-									disabled={neededExtra === 0}
+									max={Math.max(1, safeNeededExtra)}
+									disabled={safeNeededExtra === 0}
 									onChange={onExtraCandiesChange}
 									size="small"
 								/>
 							</StyledFormSection>
-							<StyledMaxRatio>/ {neededExtra.toLocaleString()}</StyledMaxRatio>
+							<StyledMaxRatio>
+								/ {safeNeededExtra.toLocaleString()}
+							</StyledMaxRatio>
 						</Box>
-
 						<StyledBoostRow>
 							<ToggleButtonGroup
 								size="small"
@@ -450,15 +585,20 @@ const PokemonHolidayCard = React.memo(
 								</div>
 							)}
 							{status.boostPolicy === "level" && (
-								<>
-									<span style={{ padding: "0.1rem 0.2rem 0 0" }}>Lv.</span>
-									<LevelInput
-										showSlider
-										sx={{ width: "2rem", fontSize: "0.9rem" }}
-										value={status.boostLevel}
-										onChange={onBoostLevelChange}
-									/>
-								</>
+								<div className="boostLevel">
+									<div className="boostLevelTarget">
+										<span style={{ padding: "0.1rem 0.2rem 0 0" }}>Lv.</span>
+										<LevelInput
+											showSlider
+											sx={{ width: "2rem", fontSize: "0.9rem" }}
+											value={status.boostLevel}
+											onChange={onBoostLevelChange}
+										/>
+									</div>
+									<div className="boostedCandies">
+										{t("boosted candies")}: {cost.boostedCandy.toLocaleString()}
+									</div>
+								</div>
 							)}
 						</StyledBoostPolicyRow>
 

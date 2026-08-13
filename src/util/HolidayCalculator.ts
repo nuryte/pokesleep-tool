@@ -1,8 +1,9 @@
-import type {
-	HolidaySettings,
-	PokemonHolidayStatus,
+import {
+	defaultPokemonHolidayStatus,
+	type HolidaySettings,
+	type PokemonHolidayStatus,
 } from "../ui/IvCalc/Holiday/HolidayState";
-import calcExpAndCandy, { calcLevelByCandy } from "./Exp";
+import calcExpAndCandy, { calcExp, calcLevelByCandy } from "./Exp";
 import { clamp } from "./NumberUtil";
 import type PokemonIv from "./PokemonIv";
 
@@ -119,6 +120,8 @@ export function calculateTotalDreamShards(settings: HolidaySettings): number {
 export type PokemonHolidayCost = {
 	/** Total candy required to reach levelTo, assuming unlimited candy supply. */
 	neededCandy: number;
+	/** Candy required for the boosted phase when boosting to a specified level. */
+	boostedCandy: number;
 	/** Total dream shards required to reach levelTo, assuming unlimited candy supply. */
 	neededShards: number;
 	/** Extra candies needed beyond candyCount to fully reach levelTo. */
@@ -131,6 +134,8 @@ export type PokemonHolidayCost = {
 	achievedCandy: number;
 	/** Dream shards actually spent to reach achievedLevel. */
 	achievedShards: number;
+	/** Remaining EXP to go at the achieved level if target was missed. */
+	remainingExpToGo: number;
 };
 
 /**
@@ -146,80 +151,151 @@ export type PokemonHolidayCost = {
  *                  when following the box's current level).
  * @returns Needed and achieved cost figures.
  */
+export type HolidayCostTotals = {
+	neededShards: number;
+	extraCandiesNeeded: number;
+	achievedCandy: number;
+	achievedShards: number;
+};
+
+export function sumIncludedHolidayCosts(
+	items: Array<{ id: number; iv: PokemonIv }>,
+	statuses: Map<number, PokemonHolidayStatus>,
+): HolidayCostTotals {
+	let neededShards = 0;
+	let extraCandiesNeeded = 0;
+	let achievedCandy = 0;
+	let achievedShards = 0;
+
+	for (const item of items) {
+		const status = statuses.get(item.id) ?? defaultPokemonHolidayStatus();
+		if (!status.included) {
+			continue;
+		}
+		const levelFrom = status.levelFrom < 0 ? item.iv.level : status.levelFrom;
+		const cost = calculatePokemonHolidayCost(item.iv, status, levelFrom);
+		neededShards += cost.achievedShards;
+		extraCandiesNeeded += cost.extraCandies;
+		achievedCandy += cost.achievedCandy;
+		achievedShards += cost.achievedShards;
+	}
+
+	return {
+		neededShards,
+		extraCandiesNeeded,
+		achievedCandy,
+		achievedShards,
+	};
+}
+
 export function calculatePokemonHolidayCost(
 	iv: PokemonIv,
 	status: PokemonHolidayStatus,
 	levelFrom: number,
 ): PokemonHolidayCost {
+	const safeCandyCount = Number.isFinite(status.candyCount)
+		? status.candyCount
+		: 0;
+	const safeExtraCandies = Number.isFinite(status.extraCandies)
+		? status.extraCandies
+		: -1;
+	const maxExpAtLevel = calcExp(levelFrom, levelFrom + 1, iv);
+	const effectiveExpToGo =
+		status.expToGo < 0
+			? maxExpAtLevel
+			: clamp(0, status.expToGo, maxExpAtLevel);
+	const expGot = maxExpAtLevel - effectiveExpToGo;
+
 	if (status.levelTo <= levelFrom) {
 		return {
 			neededCandy: 0,
+			boostedCandy: 0,
 			neededShards: 0,
 			neededExtra: 0,
 			extraCandies: 0,
 			achievedLevel: levelFrom,
 			achievedCandy: 0,
 			achievedShards: 0,
+			remainingExpToGo: Math.max(0, effectiveExpToGo),
 		};
 	}
 
 	const ivFrom = iv.clone({ level: levelFrom });
 
-	// Needed: candy required to fully reach levelTo, assuming unlimited candy.
 	let neededCandy = 0;
+	let boostedCandy = 0;
 	let neededShards = 0;
 	if (status.candyBoost === "none") {
-		const r = calcExpAndCandy(ivFrom, 0, status.levelTo, "none");
+		const r = calcExpAndCandy(ivFrom, expGot, status.levelTo, "none");
 		neededCandy = r.candy;
 		neededShards = r.shards;
 	} else if (status.boostPolicy === "all") {
-		const r = calcExpAndCandy(ivFrom, 0, status.levelTo, status.candyBoost);
+		const r = calcExpAndCandy(
+			ivFrom,
+			expGot,
+			status.levelTo,
+			status.candyBoost,
+		);
 		neededCandy = r.candy;
 		neededShards = r.shards;
 	} else {
-		let phase1Level: number;
+		let phase1Level = levelFrom;
+		let phase1ExpGot = expGot;
 		if (status.boostPolicy === "candy") {
 			const r1 = calcLevelByCandy(
 				ivFrom,
-				0,
+				expGot,
 				status.levelTo,
 				status.boostCandyCount,
 				status.candyBoost,
 			);
 			phase1Level = r1.level;
+			phase1ExpGot = r1.expGot;
 			neededCandy += r1.candyUsed;
 			neededShards += r1.shards;
 		} else {
 			const boostLevel = clamp(levelFrom, status.boostLevel, status.levelTo);
-			const r1 = calcExpAndCandy(ivFrom, 0, boostLevel, status.candyBoost);
-			phase1Level = boostLevel;
-			neededCandy += r1.candy;
+			const r1 = calcLevelByCandy(
+				ivFrom,
+				expGot,
+				boostLevel,
+				Number.MAX_SAFE_INTEGER,
+				status.candyBoost,
+			);
+			phase1Level = r1.level;
+			phase1ExpGot = r1.expGot;
+			boostedCandy = r1.candyUsed;
+			neededCandy += r1.candyUsed;
 			neededShards += r1.shards;
 		}
 		if (phase1Level < status.levelTo) {
 			const ivPhase1 = iv.clone({ level: phase1Level });
-			const r2 = calcExpAndCandy(ivPhase1, 0, status.levelTo, "none");
+			const r2 = calcExpAndCandy(
+				ivPhase1,
+				phase1ExpGot,
+				status.levelTo,
+				"none",
+			);
 			neededCandy += r2.candy;
 			neededShards += r2.shards;
 		}
 	}
 
-	const neededExtra = Math.max(0, neededCandy - status.candyCount);
+	const neededExtra = Math.max(0, neededCandy - safeCandyCount);
 	const extraCandies =
-		status.extraCandies < 0
+		safeExtraCandies < 0
 			? neededExtra
-			: Math.min(status.extraCandies, neededExtra);
+			: Math.min(safeExtraCandies, neededExtra);
 
-	// Achieved: actual outcome using only candyCount + extraCandies, which may
-	// fall short of levelTo if that total isn't enough.
-	const totalAvailable = status.candyCount + extraCandies;
+	const totalAvailable = safeCandyCount + extraCandies;
 	let achievedLevel: number;
 	let achievedCandy: number;
 	let achievedShards: number;
+	let achievedExpGot = expGot;
 	if (status.candyBoost === "none" || status.boostPolicy === "all") {
 		const r = calcLevelByCandy(
 			ivFrom,
-			0,
+			expGot,
 			status.levelTo,
 			totalAvailable,
 			status.candyBoost,
@@ -227,12 +303,13 @@ export function calculatePokemonHolidayCost(
 		achievedLevel = r.level;
 		achievedCandy = r.candyUsed;
 		achievedShards = r.shards;
+		achievedExpGot = r.expGot;
 	} else {
 		let r1: ReturnType<typeof calcLevelByCandy>;
 		if (status.boostPolicy === "candy") {
 			r1 = calcLevelByCandy(
 				ivFrom,
-				0,
+				expGot,
 				status.levelTo,
 				Math.min(status.boostCandyCount, totalAvailable),
 				status.candyBoost,
@@ -241,7 +318,7 @@ export function calculatePokemonHolidayCost(
 			const boostLevel = clamp(levelFrom, status.boostLevel, status.levelTo);
 			r1 = calcLevelByCandy(
 				ivFrom,
-				0,
+				expGot,
 				boostLevel,
 				totalAvailable,
 				status.candyBoost,
@@ -252,11 +329,12 @@ export function calculatePokemonHolidayCost(
 			achievedLevel = r1.level;
 			achievedCandy = r1.candyUsed;
 			achievedShards = r1.shards;
+			achievedExpGot = r1.expGot;
 		} else {
 			const ivPhase1 = iv.clone({ level: r1.level });
 			const r2 = calcLevelByCandy(
 				ivPhase1,
-				0,
+				r1.expGot,
 				status.levelTo,
 				remaining,
 				"none",
@@ -264,16 +342,27 @@ export function calculatePokemonHolidayCost(
 			achievedLevel = r2.level;
 			achievedCandy = r1.candyUsed + r2.candyUsed;
 			achievedShards = r1.shards + r2.shards;
+			achievedExpGot = r2.expGot;
 		}
 	}
 
+	const remainingExpToGo =
+		achievedLevel >= status.levelTo
+			? 0
+			: Math.max(
+					0,
+					calcExp(achievedLevel, achievedLevel + 1, iv) - achievedExpGot,
+				);
+
 	return {
 		neededCandy,
+		boostedCandy,
 		neededShards,
 		neededExtra,
 		extraCandies,
 		achievedLevel,
 		achievedCandy,
 		achievedShards,
+		remainingExpToGo,
 	};
 }
