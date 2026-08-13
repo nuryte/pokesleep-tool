@@ -1,11 +1,20 @@
+import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import EastIcon from "@mui/icons-material/East";
+import EditNoteOutlinedIcon from "@mui/icons-material/EditNoteOutlined";
+import IosShareIcon from "@mui/icons-material/IosShare";
+import MoreIcon from "@mui/icons-material/MoreVert";
+import RemoveCircleOutlineOutlinedIcon from "@mui/icons-material/RemoveCircleOutlineOutlined";
 import {
 	Box,
 	Card,
 	CardContent,
 	Checkbox,
+	IconButton,
 	InputAdornment,
+	ListItemIcon,
+	Menu,
 	MenuItem,
+	MenuList,
 	Stack,
 	ToggleButton,
 	ToggleButtonGroup,
@@ -23,8 +32,11 @@ import SelectEx from "../../common/SelectEx";
 import SliderEx from "../../common/SliderEx";
 import CandyIcon from "../../Resources/CandyIcon";
 import DreamShardIcon from "../../Resources/DreamShardIcon";
+import CandyDialog from "../CandyDialog";
 import { LevelInput } from "../IvForm/LevelControl";
+import type { IvAction } from "../IvState";
 import PokemonIcon from "../PokemonIcon";
+import { shareIv } from "../ShareUtil";
 import {
 	defaultPokemonHolidayStatus,
 	type HolidayAction,
@@ -273,14 +285,20 @@ const StyledFinalLevel = styled(Box)({
 const PokemonHolidayCard = React.memo(
 	({
 		pokemon,
+		ivDispatch,
 		holidayState,
 		holidayDispatch,
 	}: {
 		pokemon: PokemonBoxItem;
+		ivDispatch: React.Dispatch<IvAction>;
 		holidayState: HolidayState;
 		holidayDispatch: React.Dispatch<HolidayAction>;
 	}) => {
 		const { t } = useTranslation();
+		const [moreMenuAnchor, setMoreMenuAnchor] =
+			React.useState<HTMLElement | null>(null);
+		const [candyOpen, setCandyOpen] = React.useState(false);
+		const isMoreMenuOpen = Boolean(moreMenuAnchor);
 
 		const status: PokemonHolidayStatus =
 			holidayState.pokemonHolidayStatus.get(pokemon.id) ??
@@ -295,6 +313,45 @@ const PokemonHolidayCard = React.memo(
 				payload: { id: pokemon.id },
 			});
 		}, [holidayDispatch, pokemon.id]);
+
+		const onMoreIconClick = React.useCallback(
+			(event: React.MouseEvent<HTMLElement>) => {
+				setMoreMenuAnchor(event.currentTarget);
+			},
+			[],
+		);
+		const onMoreMenuClose = React.useCallback(() => {
+			setMoreMenuAnchor(null);
+		}, []);
+		const onBoxActionClick = React.useCallback(
+			(type: "dup" | "remove") => {
+				ivDispatch({ type, payload: { id: pokemon.id } });
+				setMoreMenuAnchor(null);
+			},
+			[ivDispatch, pokemon.id],
+		);
+		const onEditClick = React.useCallback(() => {
+			ivDispatch({ type: "select", payload: { id: pokemon.id } });
+			ivDispatch({ type: "edit", payload: { id: pokemon.id } });
+			setMoreMenuAnchor(null);
+		}, [ivDispatch, pokemon.id]);
+		const onShareClick = React.useCallback(() => {
+			setMoreMenuAnchor(null);
+			shareIv(pokemon.iv, ivDispatch, t);
+		}, [ivDispatch, pokemon.iv, t]);
+		const onCandyClick = React.useCallback(() => {
+			setMoreMenuAnchor(null);
+			setCandyOpen(true);
+		}, []);
+		const onCandyDialogClose = React.useCallback(() => {
+			setCandyOpen(false);
+		}, []);
+		const onCandyIvChange = React.useCallback(
+			(iv) => {
+				ivDispatch({ type: "updateIv", payload: { iv } });
+			},
+			[ivDispatch],
+		);
 
 		const handleStatusChange = React.useCallback(
 			(updates: Partial<PokemonHolidayStatus>) => {
@@ -441,6 +498,13 @@ const PokemonHolidayCard = React.memo(
 								)}
 							</div>
 						</div>
+						<IconButton
+							onClick={onMoreIconClick}
+							size="small"
+							aria-label={t("more")}
+						>
+							<MoreIcon />
+						</IconButton>
 					</CardHeader>
 
 					<Stack spacing={1.2}>
@@ -620,6 +684,51 @@ const PokemonHolidayCard = React.memo(
 						)}
 					</Stack>
 				</CardContent>
+				<Menu
+					anchorEl={moreMenuAnchor}
+					open={isMoreMenuOpen}
+					onClose={onMoreMenuClose}
+					anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+				>
+					<MenuList>
+						<MenuItem onClick={onEditClick}>
+							<ListItemIcon>
+								<EditNoteOutlinedIcon />
+							</ListItemIcon>
+							{t("edit")}
+						</MenuItem>
+						<MenuItem onClick={onCandyClick}>
+							<ListItemIcon sx={{ minWidth: "24px" }}>
+								<CandyIcon sx={{ color: "#888" }} />
+							</ListItemIcon>
+							{t("candy")}
+						</MenuItem>
+						<MenuItem onClick={onShareClick}>
+							<ListItemIcon>
+								<IosShareIcon />
+							</ListItemIcon>
+							{t("share")}
+						</MenuItem>
+						<MenuItem onClick={() => onBoxActionClick("dup")}>
+							<ListItemIcon>
+								<ContentCopyOutlinedIcon />
+							</ListItemIcon>
+							{t("duplicate")}
+						</MenuItem>
+						<MenuItem onClick={() => onBoxActionClick("remove")}>
+							<ListItemIcon sx={{ minWidth: "24px" }}>
+								<RemoveCircleOutlineOutlinedIcon />
+							</ListItemIcon>
+							{t("delete")}
+						</MenuItem>
+					</MenuList>
+				</Menu>
+				<CandyDialog
+					iv={pokemon.iv}
+					open={candyOpen}
+					onChange={onCandyIvChange}
+					onClose={onCandyDialogClose}
+				/>
 			</StyledCard>
 		);
 	},

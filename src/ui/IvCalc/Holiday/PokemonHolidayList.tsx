@@ -242,6 +242,7 @@ const PokemonHolidayList = React.memo(
 						<PokemonHolidayCard
 							key={pokemon.id}
 							pokemon={pokemon}
+							ivDispatch={ivDispatch}
 							holidayState={holidayState}
 							holidayDispatch={holidayDispatch}
 						/>
